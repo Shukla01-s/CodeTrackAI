@@ -24,6 +24,10 @@ fun ProfileScreen(navController: NavController, viewModel: DashboardViewModel) {
     // Auto pull metrics configuration on load
     LaunchedEffect(Unit) {
         viewModel.fetchProfileScreenDetails()
+        // 🌟 STREAK TRIGGER ADD-ON: LeetCode streak calculation ko background mein trigger karega
+        viewModel.syncLeetCodeStreakOnly()
+        // 🌟 AI ANALYTICS TRIGGER: Screen load hote hi background call initiate karega
+        viewModel.fetchAiTopicInsights(apiKey = BuildConfig.GEMINI_API_KEY)
     }
 
     Scaffold(
@@ -77,6 +81,69 @@ fun ProfileScreen(navController: NavController, viewModel: DashboardViewModel) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(text = "LeetCode ID: ${viewModel.leetcodeHandle.ifEmpty { "Not Added" }}", color = Color.LightGray, fontSize = 14.sp)
                             Text(text = "Codeforces ID: ${viewModel.codeforcesHandle.ifEmpty { "Not Added" }}", color = Color.LightGray, fontSize = 14.sp)
+                        }
+                    }
+                }
+
+                // 🌟 NEW FEATURE ADD-ON: Isolated LeetCode Streak UI Display
+                if (viewModel.leetcodeHandle.isNotEmpty()) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF2C1D11)), // Slight Orange/Brown hint for fire theme
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column {
+                                    Text("LeetCode Streak Counter", color = Color(0xFFFFA116), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        text = if (viewModel.lastLeetCodeSolvedDate.isNotEmpty()) "Last Active: ${viewModel.lastLeetCodeSolvedDate}" else "No recent activity tracked",
+                                        color = Color.Gray,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(text = "🔥", fontSize = 28.sp)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "${viewModel.leetcodeStreak} Days",
+                                        color = Color.White,
+                                        fontSize = 20.sp,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 🌟 NEW FEATURE ADD-ON: Platform Questions Distribution Breakdown Card
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Platform Distribution Breakdown 📊", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column {
+                                    Text("LeetCode Solved", color = Color(0xFFFFA116), fontSize = 13.sp)
+                                    Text("${viewModel.totalLeetCodeSolved} Qns", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text("Codeforces Solved", color = Color(0xFF3B82F6), fontSize = 13.sp)
+                                    Text("${viewModel.totalCodeforcesSolved} Qns", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
                     }
                 }
@@ -146,11 +213,71 @@ fun ProfileScreen(navController: NavController, viewModel: DashboardViewModel) {
                     }
                 }
 
+                // 🌟 NEW FEATURE ADD-ON: AI Weak/Strong Insights Section
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Topic Insights (Gemini AI Analyzer) 🧠", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Strong Topics Row Mapping
+                            Text("⚡ Strong Areas:", color = Color.Green, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            val strongList = viewModel.strongTopics
+                            if (strongList.isNotEmpty()) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    strongList.forEach { topic ->
+                                        SuggestionChip(
+                                            onClick = {},
+                                            label = { Text(topic, color = Color.White, fontSize = 11.sp) },
+                                            colors = SuggestionChipDefaults.suggestionChipColors(containerColor = Color(0xFF1B3B2B))
+                                        )
+                                    }
+                                }
+                            } else {
+                                Text("Analyzing profiles to extract skills...", color = Color.Gray, fontSize = 12.sp)
+                            }
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            // Weak Topics Row Mapping
+                            Text("⚠️ Focus Needed:", color = Color(0xFFEF4444), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            val weakList = viewModel.weakTopics
+                            if (weakList.isNotEmpty()) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    weakList.forEach { topic ->
+                                        SuggestionChip(
+                                            onClick = {},
+                                            label = { Text(topic, color = Color.White, fontSize = 11.sp) },
+                                            colors = SuggestionChipDefaults.suggestionChipColors(containerColor = Color(0xFF4A1D1D))
+                                        )
+                                    }
+                                }
+                            } else {
+                                Text("Determining improvement categories...", color = Color.Gray, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+
                 // Sync action trigger mechanism
                 item {
                     Spacer(modifier = Modifier.height(15.dp))
                     Button(
-                        onClick = { viewModel.fetchProfileScreenDetails() },
+                        onClick = {
+                            viewModel.fetchProfileScreenDetails()
+                            // 🌟 STREAK TRIGGER ALSO ON SYNC BUTTON CLICK
+                            viewModel.syncLeetCodeStreakOnly()
+                            // 🌟 AI ANALYTICS RE-TRIGGER ON LIVE BUTTON SYNC
+                            viewModel.fetchAiTopicInsights(apiKey = BuildConfig.GEMINI_API_KEY)
+                        },
                         modifier = Modifier.fillMaxWidth().height(50.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFA116)),
                         shape = RoundedCornerShape(8.dp)

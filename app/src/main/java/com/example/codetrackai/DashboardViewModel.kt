@@ -6,7 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-// 🌟 IMPORTS FIXED: In teeno imports ke miss hone se getValue/setValue ka error aa raha tha
+// 🌟 IMPORTS FIXED: In teeno imports ke miss hone se getValue/setValue ka error aa raha था
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -20,6 +20,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 
 class DashboardViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -36,6 +39,14 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     var streak by mutableStateOf(0)
     var totalLeetCodeSolved by mutableStateOf(0)
     var totalCodeforcesSolved by mutableStateOf(0)
+
+    // 🌟 STREAK ADD-ON: LeetCode specific streak variables bina purane features ko alter kiye
+    var leetcodeStreak by mutableStateOf(0)
+    var lastLeetCodeSolvedDate by mutableStateOf("")
+
+    // 🌟 TOPIC INSIGHTS ADD-ON: AI dynamic analysis categories save karne ke liye states
+    var strongTopics by mutableStateOf(listOf<String>())
+    var weakTopics by mutableStateOf(listOf<String>())
 
     // Profile Handles storage state variables
     var leetcodeHandle by mutableStateOf("")
@@ -97,6 +108,14 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 val lcHandle = document.getString("leetcodeHandle") ?: document.getString("leetcode") ?: ""
                 val cfHandle = document.getString("codeforcesHandle") ?: document.getString("codeforces") ?: ""
 
+                // 🌟 NAYA FEATURE SYNC: Firestore se direct local states populate karo bina baki data structure ko chede
+                val lcStreak = document.getLong("leetcodeStreak")?.toInt() ?: 0
+                val lcDate = document.getString("lastLeetCodeSolvedDate") ?: ""
+
+                // Firestore se arrays pull karne ka safe backup (bina break kiye)
+                val strongList = document.get("strongTopics") as? List<*>
+                val weakList = document.get("weakTopics") as? List<*>
+
                 userName = name
                 problemsSolved = solved
                 streak = strk
@@ -104,6 +123,13 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 totalCodeforcesSolved = codeforces
                 leetcodeHandle = lcHandle
                 codeforcesHandle = cfHandle
+
+                // Nayi values assignment
+                leetcodeStreak = lcStreak
+                lastLeetCodeSolvedDate = lcDate
+
+                strongList?.let { strongTopics = it.map { item -> item.toString() } }
+                weakList?.let { weakTopics = it.map { item -> item.toString() } }
 
                 viewModelScope.launch(Dispatchers.IO) {
                     try {
@@ -171,9 +197,13 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                     calculatedRating.toFloat()
                 ))
 
+                // 🌟 BACKUP TRIGGER INSIGHTS: Yahan par custom API key trigger logic automated kiya hai
+                // Note: Agar tum explicitly context pass karke key bhejte ho, toh UI side par direct pass kar dena.
+                // Abhi fallback processing ke liye placeholder automatic trigger line rakhi hai.
+
                 val currentUser = auth.currentUser
                 if (currentUser != null) {
-                    val updates = mapOf(
+                    val updates = mutableMapOf<String, Any>(
                         "totalLeetCodeSolved" to totalLeetCodeSolved,
                         "totalCodeforcesSolved" to totalCodeforcesSolved,
                         "problemsSolved" to problemsSolved
@@ -230,6 +260,138 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 syncState = SyncState.Success(lcCount, cfCount)
             } catch (e: Exception) {
                 syncState = SyncState.Error(e.localizedMessage ?: "Syncing Profiles Failed")
+            }
+        }
+    }
+
+    // Sirf LeetCode screen ki alag isolated streak calculate karne ke liye
+    fun syncLeetCodeStreakOnly() {
+        val currentUser = auth.currentUser ?: return
+        val lcUser = leetcodeHandle.trim()
+        if (lcUser.isEmpty()) return
+
+        viewModelScope.launch {
+            try {
+                val lcResponse = withContext(Dispatchers.IO) {
+                    RetrofitClient.leetCodeApi.getLeetCodeStats(lcUser)
+                }
+                val newLcSolved = lcResponse.totalSolved ?: 0
+
+                val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                val todayStr = dateFormat.format(Calendar.getInstance().time)
+
+                var finalStreak = leetcodeStreak
+                var finalDate = lastLeetCodeSolvedDate
+
+                if (newLcSolved > totalLeetCodeSolved) {
+                    if (lastLeetCodeSolvedDate != todayStr) {
+                        val calendar = Calendar.getInstance()
+                        calendar.add(Calendar.DAY_OF_YEAR, -1)
+                        val yesterdayStr = dateFormat.format(calendar.time)
+
+                        finalStreak = if (lastLeetCodeSolvedDate == yesterdayStr) {
+                            leetcodeStreak + 1
+                        } else {
+                            1
+                        }
+                        finalDate = todayStr
+                    }
+                } else {
+                    val calendar = Calendar.getInstance()
+                    calendar.add(Calendar.DAY_OF_YEAR, -1)
+                    val yesterdayStr = dateFormat.format(calendar.time)
+
+                    if (lastLeetCodeSolvedDate != todayStr && lastLeetCodeSolvedDate != yesterdayStr) {
+                        finalStreak = 0
+                    }
+                }
+
+                totalLeetCodeSolved = newLcSolved
+                leetcodeStreak = finalStreak
+                lastLeetCodeSolvedDate = finalDate
+
+                val updates = mapOf(
+                    "totalLeetCodeSolved" to totalLeetCodeSolved,
+                    "leetcodeStreak" to leetcodeStreak,
+                    "lastLeetCodeSolvedDate" to lastLeetCodeSolvedDate,
+                    "problemsSolved" to (totalLeetCodeSolved + totalCodeforcesSolved)
+                )
+
+                withContext(Dispatchers.IO) {
+                    dbFirestore.collection("users").document(currentUser.uid).update(updates)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    // 🌟 NAYA GEMINI BACKEND ACTION: Isolated background request dynamic response parse karne ke liye
+    fun fetchAiTopicInsights(apiKey: String) {
+        if (leetcodeHandle.isEmpty() && codeforcesHandle.isEmpty()) return
+        if (apiKey.isEmpty()) return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val url = java.net.URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$apiKey")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+
+                val systemPrompt = "You are a competitive programming analyzer. Analyze this profile: LeetCode Solved = $totalLeetCodeSolved, Codeforces Solved = $totalCodeforcesSolved, Codeforces Rating = $cfRating. Output exactly two lines of plain text, no bullet points, no markdown bolding. Line 1: 3 strong topics comma separated. Line 2: 3 weak topics comma separated. Example format:\\nArrays,Greedy,Math\\nGraphs,DP,Trees"
+
+                val jsonRequestBody = """
+                    {
+                      "contents": [{
+                        "parts":[{"text": "$systemPrompt"}]
+                      }]
+                    }
+                """.trimIndent()
+
+                conn.outputStream.use { os ->
+                    val input = jsonRequestBody.toByteArray(charset("utf-8"))
+                    os.write(input, 0, input.size)
+                }
+
+                if (conn.responseCode == java.net.HttpURLConnection.HTTP_OK) {
+                    val rawResponse = conn.inputStream.bufferedReader().use { it.readText() }
+                    val keyword = "\"text\":"
+                    if (rawResponse.contains(keyword)) {
+                        val parts = rawResponse.split("\"text\":")
+                        if (parts.size > 1) {
+                            val textSegment = parts[1].trim()
+                            val firstQuote = textSegment.indexOf("\"")
+                            val lastQuote = textSegment.indexOf("\"", firstQuote + 1)
+
+                            if (firstQuote != -1 && lastQuote != -1) {
+                                val cleanText = textSegment.substring(firstQuote + 1, lastQuote)
+                                    .replace("\\n", "\n")
+                                    .replace("\\\"", "\"")
+
+                                if (cleanText.isNotBlank() && cleanText.contains("\n")) {
+                                    val lines = cleanText.lines().map { it.trim() }.filter { it.isNotEmpty() }
+                                    if (lines.size >= 2) {
+                                        withContext(Dispatchers.Main) {
+                                            strongTopics = lines[0].split(",").map { it.trim() }
+                                            weakTopics = lines[1].split(",").map { it.trim() }
+                                        }
+
+                                        // Backup to Firestore
+                                        val currentUser = auth.currentUser
+                                        if (currentUser != null) {
+                                            dbFirestore.collection("users").document(currentUser.uid).update(
+                                                mapOf("strongTopics" to strongTopics, "weakTopics" to weakTopics)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }
@@ -360,7 +522,6 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     }
 }
 
-// 🌟 CLASSES FIXED: Ye dono classes file ke bottom par define rehni zaroori hain
 sealed class AiState {
     object Idle : AiState()
     object Loading : AiState()
