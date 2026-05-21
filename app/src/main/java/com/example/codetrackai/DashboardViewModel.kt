@@ -48,6 +48,10 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     var strongTopics by mutableStateOf(listOf<String>())
     var weakTopics by mutableStateOf(listOf<String>())
 
+    // 🌟 APP DYNAMIC STREAK MATRIX ADD-ON: CodeTrackAI specific tracking parameters
+    var appStreakCount by mutableStateOf(0)
+    var activeDatesList by mutableStateOf<List<String>>(emptyList())
+
     // Profile Handles storage state variables
     var leetcodeHandle by mutableStateOf("")
     var codeforcesHandle by mutableStateOf("")
@@ -116,6 +120,10 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 val strongList = document.get("strongTopics") as? List<*>
                 val weakList = document.get("weakTopics") as? List<*>
 
+                // App Matrix integration synchronization data
+                val appStrk = document.getLong("appStreakCount")?.toInt() ?: 0
+                val appDatesRaw = document.get("activeDatesList") as? List<*>
+
                 userName = name
                 problemsSolved = solved
                 streak = strk
@@ -130,6 +138,10 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
                 strongList?.let { strongTopics = it.map { item -> item.toString() } }
                 weakList?.let { weakTopics = it.map { item -> item.toString() } }
+
+                // App Streak mapping safely
+                appStreakCount = appStrk
+                appDatesRaw?.let { activeDatesList = it.map { item -> item.toString() } }
 
                 viewModelScope.launch(Dispatchers.IO) {
                     try {
@@ -196,10 +208,6 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                     calculatedRating * 0.97f,
                     calculatedRating.toFloat()
                 ))
-
-                // 🌟 BACKUP TRIGGER INSIGHTS: Yahan par custom API key trigger logic automated kiya hai
-                // Note: Agar tum explicitly context pass karke key bhejte ho, toh UI side par direct pass kar dena.
-                // Abhi fallback processing ke liye placeholder automatic trigger line rakhi hai.
 
                 val currentUser = auth.currentUser
                 if (currentUser != null) {
@@ -397,10 +405,71 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun saveDataToFirebase() {
+        val currentUser = auth.currentUser
+        if (currentUser != null) {
+            val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Calendar.getInstance().time)
+
+            if (!activeDatesList.contains(todayStr)) {
+                val updatedDatesList = activeDatesList.toMutableList().apply { add(todayStr) }
+                activeDatesList = updatedDatesList
+
+                // 🌟 FIX 1: Yesterday's date generation logic simplified and type-fixed
+                val cal = Calendar.getInstance()
+                cal.add(Calendar.DAY_OF_YEAR, -1)
+                val yesterdayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(cal.time)
+
+                val lastDate = activeDatesList.getOrNull(activeDatesList.size - 2)
+
+                // 🌟 FIX 2: String comparison corrected (Comparing String with String)
+                if (lastDate == yesterdayStr) {
+                    appStreakCount += 1
+                } else if (lastDate != todayStr) {
+                    appStreakCount = 1
+                }
+            }
+
+            dbFirestore.collection("users").document(currentUser.uid).update(
+                mapOf(
+                    "appStreakCount" to appStreakCount,
+                    "activeDatesList" to activeDatesList
+                )
+            )
+        }
         repo.saveUserData(userName, problemsSolved, totalLeetCodeSolved, totalCodeforcesSolved, tasks)
     }
 
     fun loadDataFromFirebase() {
+        val currentUser = auth.currentUser
+        if (currentUser != null) {
+            val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Calendar.getInstance().time)
+
+            if (!activeDatesList.contains(todayStr)) {
+                val updatedDatesList = activeDatesList.toMutableList().apply { add(todayStr) }
+                activeDatesList = updatedDatesList
+
+                // 🌟 FIX 1: Yesterday's date generation logic simplified and type-fixed
+                val cal = Calendar.getInstance()
+                cal.add(Calendar.DAY_OF_YEAR, -1)
+                val yesterdayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(cal.time)
+
+                val lastDate = activeDatesList.getOrNull(activeDatesList.size - 2)
+
+                // 🌟 FIX 2: String comparison corrected
+                if (lastDate == yesterdayStr) {
+                    appStreakCount += 1
+                } else if (lastDate != todayStr) {
+                    appStreakCount = 1
+                }
+
+                dbFirestore.collection("users").document(currentUser.uid).update(
+                    mapOf(
+                        "appStreakCount" to appStreakCount,
+                        "activeDatesList" to activeDatesList
+                    )
+                )
+            }
+        }
+
         repo.getUserData { data ->
             data?.let {
                 userName = (it["name"] as? String) ?: "User"
@@ -419,7 +488,6 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             }
         }
     }
-
     fun logout(onLogoutSuccess: () -> Unit) {
         firestoreListener?.remove()
         auth.signOut()
