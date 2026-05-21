@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "350173591187",
+    "project_id": "codetracker-1e0d5",
+    "storage_bucket": "codetracker-1e0d5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:350173591187:android:366fc87572057138133f66",
+        "android_client_info": {
+          "package_name": "com.example.codetrackai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDrIsOvG3iMO5NeTBbHDlehSsj4nGzPhJE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
