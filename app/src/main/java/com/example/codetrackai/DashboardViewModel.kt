@@ -510,6 +510,17 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         updatedList[index] = task.copy(isCompleted = !task.isCompleted)
         tasks = updatedList
     }
+    // 🌟 NAYA FEATURE: Delete Task Function
+    fun deleteTask(index: Int) {
+        // Safety Check: Pehle confirm karo ki index list ki boundary ke andar hai
+        if (index in tasks.indices) {
+            val updatedList = tasks.toMutableList()
+            updatedList.removeAt(index)
+            tasks = updatedList
+            // Firebase ko updated list turant sync karo taaki server se bhi delete ho jaye
+            saveDataToFirebase()
+        }
+    }
 
     fun getTaskProgress(): Float {
         if (tasks.isEmpty()) return 0f

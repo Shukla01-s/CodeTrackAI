@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -144,7 +146,7 @@ fun TaskScreen(
                 Spacer(modifier = Modifier.height(15.dp))
             }
 
-            // 🌟 3. PREMIUM CARD-LIST ITEMS
+            // 🌟 3. PREMIUM CARD-LIST ITEMS (With Delete Action integrated)
             if (tasks.isEmpty()) {
                 item {
                     Box(
@@ -157,7 +159,8 @@ fun TaskScreen(
                     }
                 }
             } else {
-                itemsIndexed(tasks) { index, task ->
+                // 🚀 Naya update: key mapping jodi taaki lazy composition data states safe rahein aur glitch na karein
+                itemsIndexed(tasks, key = { _, task -> task.hashCode() }) { index, task ->
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -171,30 +174,49 @@ fun TaskScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween // 🚀 Text left end par, trash layout right end par
                         ) {
-                            Checkbox(
-                                checked = task.isCompleted,
-                                onCheckedChange = {
-                                    viewModel.toggleTask(index)
-                                    viewModel.saveDataToFirebase()
-                                },
-                                colors = CheckboxDefaults.colors(
-                                    checkedColor = Color(0xFF2DB55D),
-                                    uncheckedColor = Color.Gray,
-                                    checkmarkColor = Color.Black
+                            Row(
+                                modifier = Modifier.weight(1f), // 🚀 Text truncation handle karne ke liye area optimization
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = task.isCompleted,
+                                    onCheckedChange = {
+                                        viewModel.toggleTask(index)
+                                        viewModel.saveDataToFirebase()
+                                    },
+                                    colors = CheckboxDefaults.colors(
+                                        checkedColor = Color(0xFF2DB55D),
+                                        uncheckedColor = Color.Gray,
+                                        checkmarkColor = Color.Black
+                                    )
                                 )
-                            )
 
-                            Spacer(modifier = Modifier.width(10.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
 
-                            Text(
-                                text = task.title,
-                                color = if (task.isCompleted) Color.DarkGray else Color.White,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Medium,
-                                textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None
-                            )
+                                Text(
+                                    text = task.title,
+                                    color = if (task.isCompleted) Color.DarkGray else Color.White,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None
+                                )
+                            }
+
+                            // 🌟 NAYA TRASH ICON COMPONENT
+                            IconButton(
+                                onClick = {
+                                    viewModel.deleteTask(index) // Direct backend viewmodel pipeline execute karega
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Delete Task",
+                                    tint = Color(0xFFEF4444) // Premium Red tint
+                                )
+                            }
                         }
                     }
                 }
