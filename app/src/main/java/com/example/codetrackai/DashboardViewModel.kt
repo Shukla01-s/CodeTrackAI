@@ -6,7 +6,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-// 🌟 IMPORTS FIXED: In teeno imports ke miss hone se getValue/setValue ka error aa raha था
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -23,6 +22,7 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import java.util.Date
 
 class DashboardViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -143,6 +143,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 appStreakCount = appStrk
                 appDatesRaw?.let { activeDatesList = it.map { item -> item.toString() } }
 
+                // 🌟 AUTOMATION TRICK: App load hote hi verify karo ki streak check valid hai ya break ho chuki h
+                verifyStreakMaintenanceOnLaunch()
+
                 viewModelScope.launch(Dispatchers.IO) {
                     try {
                         userDao.insertOrUpdateUser(
@@ -157,6 +160,83 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                     }
                 }
             }
+    }
+
+    // 🌟 AUTOMATION MATRIX ENGINE: Background check for streak continuity on App Start
+    private fun verifyStreakMaintenanceOnLaunch() {
+        if (activeDatesList.isEmpty()) return
+        try {
+            val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+            val todayStr = dateFormat.format(Calendar.getInstance().time)
+            val lastActiveDateStr = activeDatesList.last()
+
+            if (lastActiveDateStr != todayStr) {
+                val todayDate = dateFormat.parse(todayStr)
+                val lastDate = dateFormat.parse(lastActiveDateStr)
+
+                if (todayDate != null && lastDate != null) {
+                    val diff = todayDate.time - lastDate.time
+                    val diffDays = diff / (1000 * 60 * 60 * 24)
+
+                    // Agar gap 1 din se bada hai toh dynamic tracking broken. Reset to 0.
+                    if (diffDays > 1) {
+                        appStreakCount = 0
+                        val currentUser = auth.currentUser
+                        if (currentUser != null) {
+                            dbFirestore.collection("users").document(currentUser.uid)
+                                .update("appStreakCount", appStreakCount)
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    // 🌟 DYNAMIC MATRIX ENGINE: Jab user task tick kare tab check dynamically trigger hoga
+    private fun updateAppStreakLogic() {
+        val currentUser = auth.currentUser ?: return
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val todayStr = dateFormat.format(Calendar.getInstance().time)
+
+        // Agar aaj ka login task activity mapping already saved h, toh return skip karo duplicate locks
+        if (activeDatesList.contains(todayStr)) return
+
+        val updatedDatesList = activeDatesList.toMutableList()
+
+        if (updatedDatesList.isEmpty()) {
+            appStreakCount = 1
+        } else {
+            val lastActiveDateStr = updatedDatesList.last()
+            try {
+                val todayDate = dateFormat.parse(todayStr)
+                val lastDate = dateFormat.parse(lastActiveDateStr)
+
+                if (todayDate != null && lastDate != null) {
+                    val diff = todayDate.time - lastDate.time
+                    val diffDays = diff / (1000 * 60 * 60 * 24)
+
+                    if (diffDays == 1L) {
+                        appStreakCount += 1 // Consecutive task log -> Streak +1
+                    } else if (diffDays > 1L) {
+                        appStreakCount = 1  // Broken milestone interval -> Reset to 1
+                    }
+                }
+            } catch (e: Exception) {
+                appStreakCount = 1
+            }
+        }
+
+        updatedDatesList.add(todayStr)
+        activeDatesList = updatedDatesList
+
+        dbFirestore.collection("users").document(currentUser.uid).update(
+            mapOf(
+                "appStreakCount" to appStreakCount,
+                "activeDatesList" to activeDatesList
+            )
+        )
     }
 
     fun fetchProfileScreenDetails() {
@@ -406,70 +486,10 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun saveDataToFirebase() {
         val currentUser = auth.currentUser
-        if (currentUser != null) {
-            val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Calendar.getInstance().time)
-
-            if (!activeDatesList.contains(todayStr)) {
-                val updatedDatesList = activeDatesList.toMutableList().apply { add(todayStr) }
-                activeDatesList = updatedDatesList
-
-                // 🌟 FIX 1: Yesterday's date generation logic simplified and type-fixed
-                val cal = Calendar.getInstance()
-                cal.add(Calendar.DAY_OF_YEAR, -1)
-                val yesterdayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(cal.time)
-
-                val lastDate = activeDatesList.getOrNull(activeDatesList.size - 2)
-
-                // 🌟 FIX 2: String comparison corrected (Comparing String with String)
-                if (lastDate == yesterdayStr) {
-                    appStreakCount += 1
-                } else if (lastDate != todayStr) {
-                    appStreakCount = 1
-                }
-            }
-
-            dbFirestore.collection("users").document(currentUser.uid).update(
-                mapOf(
-                    "appStreakCount" to appStreakCount,
-                    "activeDatesList" to activeDatesList
-                )
-            )
-        }
         repo.saveUserData(userName, problemsSolved, totalLeetCodeSolved, totalCodeforcesSolved, tasks)
     }
 
     fun loadDataFromFirebase() {
-        val currentUser = auth.currentUser
-        if (currentUser != null) {
-            val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Calendar.getInstance().time)
-
-            if (!activeDatesList.contains(todayStr)) {
-                val updatedDatesList = activeDatesList.toMutableList().apply { add(todayStr) }
-                activeDatesList = updatedDatesList
-
-                // 🌟 FIX 1: Yesterday's date generation logic simplified and type-fixed
-                val cal = Calendar.getInstance()
-                cal.add(Calendar.DAY_OF_YEAR, -1)
-                val yesterdayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(cal.time)
-
-                val lastDate = activeDatesList.getOrNull(activeDatesList.size - 2)
-
-                // 🌟 FIX 2: String comparison corrected
-                if (lastDate == yesterdayStr) {
-                    appStreakCount += 1
-                } else if (lastDate != todayStr) {
-                    appStreakCount = 1
-                }
-
-                dbFirestore.collection("users").document(currentUser.uid).update(
-                    mapOf(
-                        "appStreakCount" to appStreakCount,
-                        "activeDatesList" to activeDatesList
-                    )
-                )
-            }
-        }
-
         repo.getUserData { data ->
             data?.let {
                 userName = (it["name"] as? String) ?: "User"
@@ -507,8 +527,16 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         if (index < 0 || index >= tasks.size) return
         val updatedList = tasks.toMutableList()
         val task = updatedList[index]
-        updatedList[index] = task.copy(isCompleted = !task.isCompleted)
+        val newCompletionStatus = !task.isCompleted
+        updatedList[index] = task.copy(isCompleted = newCompletionStatus)
         tasks = updatedList
+
+        // 🌟 INTEGRATED LEETCODE MATRIX TRIGGER: Agar task checkmark 'true' hua h, toh matrix activity check update chalao
+        if (newCompletionStatus) {
+            updateAppStreakLogic()
+        }
+
+        saveDataToFirebase()
     }
     // 🌟 NAYA FEATURE: Delete Task Function
     fun deleteTask(index: Int) {
